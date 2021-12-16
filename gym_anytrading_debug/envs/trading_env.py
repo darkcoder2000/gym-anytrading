@@ -7,11 +7,13 @@ import matplotlib.pyplot as plt
 
 
 class Actions(Enum):
+    """List of possible actions"""
     Sell = 0
     Buy = 1
 
 
 class Positions(Enum):
+    """Not sure for what that is used"""
     Short = 0
     Long = 1
 
@@ -20,15 +22,29 @@ class Positions(Enum):
 
 
 class TradingEnv(gym.Env):
+    """Base class for trading"""
 
     metadata = {'render.modes': ['human']}
 
-    def __init__(self, df, window_size):
+    def __init__(self, df, window_size, debug):
+        #logging.basicConfig(filename='trading_env.log', level=logging.DEBUG)
+
+        if debug:
+            print("Init")
+
+        """
+        df = data frame containing the data to train on
+        window_size = number of samples used in one observation or step
+        """
+
         assert df.ndim == 2
 
         self.seed()
         self.df = df
         self.window_size = window_size
+        self.debug = debug
+        
+        """  """
         self.prices, self.signal_features = self._process_data()
         self.shape = (window_size, self.signal_features.shape[1])
 
@@ -71,6 +87,9 @@ class TradingEnv(gym.Env):
     def step(self, action):
         self._done = False
         self._current_tick += 1
+        
+        if self.debug:
+            print("step: tick: {0} action: {1} ".format(self._current_tick, Actions(action)))
 
         if self._current_tick == self._end_tick:
             self._done = True
@@ -80,10 +99,12 @@ class TradingEnv(gym.Env):
 
         self._update_profit(action)
 
+        # reverse position when trade=true
         trade = False
         if ((action == Actions.Buy.value and self._position == Positions.Short) or
             (action == Actions.Sell.value and self._position == Positions.Long)):
             trade = True
+            print("trade = true")
 
         if trade:
             self._position = self._position.opposite()
@@ -98,10 +119,14 @@ class TradingEnv(gym.Env):
         )
         self._update_history(info)
 
+        if self.debug:
+            print("step: reward: ", step_reward)
+
         return observation, step_reward, self._done, info
 
 
     def _get_observation(self):
+        '''returns the observation window'''
         return self.signal_features[(self._current_tick-self.window_size):self._current_tick]
 
 
@@ -175,16 +200,19 @@ class TradingEnv(gym.Env):
 
 
     def _process_data(self):
+        '''Prepares the data for further processing'''
         raise NotImplementedError
 
 
-    def _calculate_reward(self, action):
+    def _calculate_reward(self, action):        
+        ''' 
+        Reward is calculated here 
+        When buy and short or sell and long then trade
+        Trade gets executed
+        Reward is the price difference when position is long
+        '''
         raise NotImplementedError
 
 
     def _update_profit(self, action):
-        raise NotImplementedError
-
-
-    def max_possible_profit(self):  # trade fees are ignored
         raise NotImplementedError
