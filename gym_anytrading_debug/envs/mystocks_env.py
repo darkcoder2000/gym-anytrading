@@ -8,15 +8,8 @@ import logging
 
 class Actions(Enum):
     """List of possible actions"""
-    Sell = 0    
-    Hold = 1
-    Buy = 2
-
-# class Wallet:
-#     def __init__(self, amount_init_dollars, amount_init_shares):
-#         self.dollars = amount_init_dollars
-#         self.shares = amount_init_shares
-
+    Sell = 0   
+    Buy = 1
 
 class MyStocksEnv(gym.Env):
     """Class for trading"""
@@ -26,7 +19,7 @@ class MyStocksEnv(gym.Env):
 
         logging.basicConfig(filename='MyStocksEnv.log', 
             format='%(asctime)s.%(msecs)03d %(levelname)s {%(module)s} [%(funcName)s] %(message)s', 
-            datefmt='%Y-%m-%d,%H:%M:%S', level=logging.DEBUG)
+            datefmt='%Y-%m-%d,%H:%M:%S', level=logging.INFO)
 
         self.seed()
         self.df = df
@@ -48,16 +41,12 @@ class MyStocksEnv(gym.Env):
         self.end_tick = len(self.prices) - 1
         self.done = None
         self.current_tick = None
-
-        self._last_trade_tick = None  #check if can be removed
         
         self.total_reward = None
         
         self.balance = None  
         self.dollars = None
         self.shares = None
-        # self._first_rendering = None
-        # self.history = None
 
     def seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
@@ -65,22 +54,19 @@ class MyStocksEnv(gym.Env):
 
     def reset(self):
         if self.debug:
-            logging.debug("reset")
+            logging.info("reset")
         self.done = False
         self.current_tick = self.start_tick
-        self.last_trade_tick = self.current_tick - 1
         self.total_reward = 0.
         self.dollars = 1000.  # unit
         self.shares = 0.
         self.balance = 1000.  
-        # self.first_rendering = True
-        # self.history = {}
         return self.get_observation()
 
         
     def init_data(self):
         #use close values as prices
-        prices = self.df.loc[:, 'Close'].to_numpy()
+        prices = self.df.loc[:, 'close'].to_numpy()
 
         prices[self.frame_bound[0] - self.window_size] 
         prices = prices[self.frame_bound[0]-self.window_size:self.frame_bound[1]]
@@ -146,14 +132,14 @@ class MyStocksEnv(gym.Env):
 
         if(action == Actions.Buy.value):
             self.buy(shares_price)        
-        elif(action == Actions.Hold.value):
-            logging.debug("Holding")        
+        # elif(action == Actions.Hold.value):
+        #     logging.info("Holding")        
         elif(action == Actions.Sell.value):
             self.sell(shares_price)
 
-        # 3. Calculate reward
+        # 3. Calculate reward        
         self.balance = self.get_balance(shares_price)
-        step_reward =  self.balance - current_balance
+        step_reward =  self.balance - current_balance        
 
         return step_reward
 
@@ -161,14 +147,14 @@ class MyStocksEnv(gym.Env):
         if(self.dollars > 0.):
             self.shares = self.dollars / shares_price
             if self.debug:
-                logging.debug("Buying at {0} for ${1} getting {2} shares".format(shares_price, self.dollars, self.shares))
+                logging.info("Buying at {0} for ${1} getting {2} shares".format(shares_price, self.dollars, self.shares))
             self.dollars = 0.
 
     def sell(self, shares_price):
         if(self.shares > 0.):
             self.dollars = self.shares * shares_price
             if self.debug:       
-                logging.debug("Selling at {0} for {1} shares getting ${2}".format(shares_price, self.shares, self.dollars))
+                logging.info("Selling at {0} for {1} shares getting ${2}".format(shares_price, self.shares, self.dollars))
             self.shares = 0.
 
     def get_observation(self):
