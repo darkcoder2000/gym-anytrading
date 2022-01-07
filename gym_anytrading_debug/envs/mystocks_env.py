@@ -14,17 +14,18 @@ class Actions(Enum):
 class MyStocksEnv(gym.Env):
     """Class for trading"""
 
-    def __init__(self, df, window_size, frame_bound, debug, log_level=logging.INFO):
+    def __init__(self, df, window_size, frame_bound, debug, log_level=logging.DEBUG):
         assert df.ndim == 2
         
         self.debug = debug
 
-        if self.debug:
-            logging.info("LogLevel: {0}".format(log_level))
-
         logging.basicConfig(filename='MyStocksEnv.log', 
             format='%(asctime)s.%(msecs)03d %(levelname)s {%(module)s} [%(funcName)s] %(message)s', 
             datefmt='%Y-%m-%d,%H:%M:%S', level=log_level)
+
+        if self.debug:
+            logging.info("LogLevel: {0}".format(log_level))
+            logging.info(logging.getLevelName(logging.root.level))
 
         self.seed()
         self.df = df
@@ -74,12 +75,14 @@ class MyStocksEnv(gym.Env):
         self.first_rendering = True
         self.history = {}
         self.shares_just_hold = 1000. / self.prices[self.current_tick]
+        if self.debug:
+            logging.debug("Initial shares: {0}".format(self.shares_just_hold))
         return self.get_observation()
 
         
     def init_data(self):
         #use close values as prices
-        prices = self.df.loc[:, 'close'].to_numpy()
+        prices = self.df.loc[:, 'price'].to_numpy()
 
         prices[self.frame_bound[0] - self.window_size] 
         prices = prices[self.frame_bound[0]-self.window_size:self.frame_bound[1]]
@@ -93,7 +96,6 @@ class MyStocksEnv(gym.Env):
 
     def step(self, action):
         self._done = False
-        self.current_tick += 1
         
         if self.debug:
             logging.debug("------------------------------------------------")
@@ -107,28 +109,32 @@ class MyStocksEnv(gym.Env):
         
         observation = self.get_observation()
 
+        current_price = self.prices[self.current_tick]
+
         info = dict(
             total_reward = self.total_reward,
             balance = self.balance,
             dollars = self.dollars,
             shares = self.shares,
-            performance = self.balance / (self.shares_just_hold * self.prices[self.current_tick])
+            current_price = current_price,
+            performance = self.balance / (self.shares_just_hold * current_price)
         )
-        #self._update_history(info)
+        self._update_history(info)
 
         if self.debug:
-            #logging.debug("reward: {0}".format(step_reward))
+            logging.debug("reward: {0}".format(step_reward))
             logging.debug(info)
-
+        
+        self.current_tick += 1
         return observation, step_reward, self.done, info
        
 
-    # def _update_history(self, info):
-    #    if not self.history:
-    #        self.history = {key: [] for key in info.keys()}
+    def _update_history(self, info):
+       if not self.history:
+           self.history = {key: [] for key in info.keys()}
 
-    #    for key, value in info.items():
-    #        self.history[key].append(value)
+       for key, value in info.items():
+           self.history[key].append(value)
 
     def get_balance(self, shares_price):
         return self.dollars + (self.shares * shares_price)
@@ -163,7 +169,8 @@ class MyStocksEnv(gym.Env):
 
         # 3. Calculate reward        
         self.balance = self.get_balance(share_price)
-        step_reward =  self.balance - current_balance        
+        #performance = self.balance / (self.shares_just_hold * self.prices[self.current_tick])
+        step_reward =  self.balance - current_balance
 
         return step_reward
 
@@ -191,11 +198,9 @@ class MyStocksEnv(gym.Env):
         if self.debug:       
             logging.debug("Render")
 
-    def render_all(self, mode='human'):
+    def render_all(self, file_path, mode='human'):
         sell_ticks = []
         buy_ticks = []
-        plt.plot(self.prices)
-
         for actionEntry in self.action_history:
             if self.debug:       
                 logging.debug("action {0}".format(actionEntry))
@@ -209,13 +214,42 @@ class MyStocksEnv(gym.Env):
         if self.debug:       
             logging.debug("sell_ticks {0} buy_ticks {1} window_ticks {2}".format(len(sell_ticks),len(buy_ticks), len(self.action_history)))
 
-        plt.plot(sell_ticks, self.prices[sell_ticks], 'ro')
-        plt.plot(buy_ticks, self.prices[buy_ticks], 'go')
 
-        plt.suptitle(
+        # plt.plot(self.prices, 'black')
+        # plt.plot(self.history['balance'], 'green')
+        # plt.plot(sell_ticks, self.prices[sell_ticks], 'ro')
+        # plt.plot(buy_ticks, self.prices[buy_ticks], 'go')
+
+        f = plt.figure(figsize=(25,6))
+        ax1 = f.add_subplot()
+        color = 'black'
+        ax1.set_xlabel('time (days)')
+        ax1.set_ylabel('price', color=color)
+        ax1.plot(self.prices, color=color)
+        ax1.plot(sell_ticks, self.prices[sell_ticks], 'ro')
+        ax1.plot(buy_ticks, self.prices[buy_ticks], 'go')
+        ax1.tick_params(axis='y', labelcolor=color)
+
+        ax2 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
+        color = 'blue'
+        ax2.set_ylabel('balance', color=color)  # we already handled the x-label with ax1
+
+        balance_data = self.history['balance']
+        for i in range (0,self.window_size):
+            balance_data.insert(0,1000.0)
+        ax2.plot(balance_data, color=color)
+        ax2.tick_params(axis='y', labelcolor=color)
+
+        f.suptitle(
             "Total Reward: %.6f" % self.total_reward + ' ~ ' +
             "Total Profit: %.6f" % self.balance
         )
+
+        f.savefig(file_path)
+
+        #plt.draw()
+        #f.show()
+
 
     def close (self):
         logging.debug("close")
